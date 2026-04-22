@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>霓虹打砖块 - Neon Breakout</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+            padding: 10px;
+            touch-action: none;
+        }
+        .game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 800px;
+        }
+        .title {
+            color: #ff00ff;
+            font-size: clamp(1.5em, 5vw, 2.5em);
+            font-weight: bold;
+            text-shadow: 0 0 20px #ff00ff, 0 0 40px #ff00ff, 0 0 60px #ff00ff;
+            letter-spacing: clamp(2px, 1vw, 8px);
+            animation: titlePulse 2s ease-in-out infinite;
+            text-align: center;
+        }
+        @keyframes titlePulse {
+            0%, 100% { opacity: 1; text-shadow: 0 0 20px #ff00ff, 0 0 40px #ff00ff; }
+            50% { opacity: 0.8; text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff; }
+        }
+        .score-board {
+            display: flex;
+            gap: clamp(8px, 2vw, 40px);
+            color: #fff;
+            font-size: clamp(0.8em, 3vw, 1.2em);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .score-item {
+            display: flex;
+            align-items: center;
+            gap: clamp(4px, 1vw, 10px);
+            background: rgba(255,255,255,0.05);
+            padding: clamp(4px, 1.5vw, 8px) clamp(8px, 2vw, 20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255,0,255,0.3);
+            white-space: nowrap;
+        }
+        .score-item span {
+            color: #ff00ff;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(255,0,255,0.2), inset 0 0 30px rgba(255,0,255,0.05);
+            border: 2px solid rgba(255,0,255,0.3);
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 4 / 3;
+            /* GPU层提升 */
+            transform: translateZ(0);
+            will-change: transform;
+            contain: strict;
+        }
+        .canvas-wrapper canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            /* 强制GPU合成 */
+            transform: translateZ(0);
+            will-change: contents;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: clamp(8px, 2vw, 12px) clamp(16px, 4vw, 30px);
+            border: none;
+            border-radius: 25px;
+            font-size: clamp(0.8em, 2.5vw, 1em);
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-start {
+            background: linear-gradient(135deg, #ff00ff, #cc00cc);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255,0,255,0.4);
+        }
+        .btn-start:hover { transform: translateY(-2px); box-shadow: 0 5px 25px rgba(255,0,255,0.6); }
+        .btn-pause {
+            background: linear-gradient(135deg, #ffaa00, #ff8800);
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,170,0,0.4);
+        }
+        .btn-pause:hover { transform: translateY(-2px); box-shadow: 0 5px 25px rgba(255,170,0,0.6); }
+        .btn-retry {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255,68,68,0.4);
+        }
+        .btn-retry:hover { transform: translateY(-2px); box-shadow: 0 5px 25px rgba(255,68,68,0.6); }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 16px;
+        }
+        .overlay h2 {
+            color: #ff4444;
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #ff4444;
+            animation: gameOverPulse 1s ease-in-out infinite;
+        }
+        @keyframes gameOverPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .overlay p { color: #fff; font-size: 1.3em; margin-bottom: 30px; }
+        .overlay .final-score { color: #ff00ff; font-size: 2em; font-weight: bold; }
+        .hidden { display: none !important; }
+        .instructions {
+            color: #666;
+            font-size: clamp(0.7em, 2vw, 0.85em);
+            margin-top: 5px;
+            text-align: center;
+        }
+        .lives-display { display: flex; gap: 5px; align-items: center; }
+        .life-ball { width: 12px; height: 12px; border-radius: 50%; background: #ff00ff; box-shadow: 0 0 8px #ff00ff; }
+        .level-display { color: #00ffff; font-weight: bold; }
+        .aim-hint {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ff88;
+            font-size: 0.85em;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            text-shadow: 0 0 10px #00ff88;
+        }
+        .aim-hint.show { opacity: 1; }
+        @media (max-width: 600px) {
+            .overlay h2 { font-size: 2em !important; }
+            .overlay p { font-size: 1em !important; }
+            .overlay .final-score { font-size: 1.5em !important; }
+        }
+        @media (max-width: 400px) {
+            .score-board { gap: 4px; }
+            .score-item { padding: 3px 6px; font-size: 0.75em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="title">NEON BREAKOUT</div>
+        <div class="score-board">
+            <div class="score-item"><div>得分</div><span id="score">0</span></div>
+            <div class="score-item"><div>最高分</div><span id="highScore">0</span></div>
+            <div class="score-item"><div>关卡</div><span class="level-display" id="level">1</span></div>
+            <div class="score-item"><div>生命</div><div class="lives-display" id="lives"></div></div>
+        </div>
+        <div class="canvas-wrapper">
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            <div id="aimHint" class="aim-hint">长按拖动瞄准，松手发射</div>
+            <div id="gameOverOverlay" class="overlay hidden">
+                <h2>GAME OVER</h2>
+                <p>最终得分: <span class="final-score" id="finalScore">0</span></p>
+                <p style="font-size: 1em; color: #888;">到达关卡: <span id="finalLevel">1</span></p>
+                <button class="btn btn-start" onclick="restartGame()">重新开始</button>
+            </div>
+            <div id="startOverlay" class="overlay">
+                <h2 style="color: #ff00ff; animation: titlePulse 2s ease-in-out infinite;">READY?</h2>
+                <p style="margin-bottom: 30px;">长按平台拖动瞄准，松手发射球</p>
+                <button class="btn btn-start" onclick="startGame()">开始游戏</button>
+            </div>
+            <div id="levelOverlay" class="overlay hidden">
+                <h2 style="color: #00ffff;">LEVEL UP!</h2>
+                <p style="margin-bottom: 30px;">第 <span id="levelUpNum">2</span> 关</p>
+                <button class="btn btn-start" onclick="nextLevel()">继续</button>
+            </div>
+        </div>
+        <div class="controls">
+            <button class="btn btn-start" id="startBtn" onclick="startGame()">开始</button>
+            <button class="btn btn-pause" id="pauseBtn" onclick="togglePause()">暂停</button>
+            <button class="btn btn-retry" id="retryBtn" onclick="retryGame()">重试</button>
+        </div>
+        <div class="instructions">长按平台拖动瞄准 | 松手发射 | 空格键暂停</div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+const aimHint = document.getElementById('aimHint');
+
+const BASE_W = 800, BASE_H = 600;
+let scaleX = 1, scaleY = 1;
+
+function resize() {
+    const r = canvas.getBoundingClientRect();
+    scaleX = BASE_W / r.width;
+    scaleY = BASE_H / r.height;
+    // 考虑设备像素比，让GPU渲染更高分辨率
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = BASE_W * dpr;
+    canvas.height = BASE_H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // CSS尺寸保持逻辑分辨率
+    canvas.style.width = r.width + 'px';
+    canvas.style.height = r.height + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+let score = 0, highScore = localStorage.getItem('breakoutHighScore') || 0;
+let level = 1, lives = 3;
+let isRunning = false, isPaused = false;
+let particles = [], combo = 0, comboTimer = null, ballTrails = [];
+let touchStartX = 0, paddleStartX = 0;
+
+// 连击动能系统：每次连击给小球施加一个瞬时动能脉冲
+let comboMomentum = 0;
+const MOMENTUM_BOOST = 0.8;
+const MAX_MOMENTUM = 5;
+const MOMENTUM_DECAY = 0.04;
+const MOMENTUM_ANGLE_VAR = 0.3;
+
+// 瞄准系统
+let isAiming = false;
+let aimStartX = 0, aimStartY = 0;
+let aimCurrentX = 0, aimCurrentY = 0;
+const MAX_AIM_DIST = 200;
+const MIN_AIM_DIST = 30;
+
+let paddle = { x: BASE_W/2 - 60, y: BASE_H - 40, width: 120, height: 15, speed: 8, glow: 0 };
+let ball = { x: BASE_W/2, y: BASE_H/2, radius: 8, dx: 4, dy: -4, speed: 5, active: false, glow: 0 };
+
+let bricks = [];
+const BRICK_ROWS = 6, BRICK_COLS = 10, BRICK_PAD = 8, BRICK_TOP = 60, BRICK_LEFT = 35;
+const BRICK_COLORS = [
+    { main: '#ff0066', glow: '#ff0066' }, { main: '#ff6600', glow: '#ff6600' },
+    { main: '#ffcc00', glow: '#ffcc00' }, { main: '#00ff88', glow: '#00ff88' },
+    { main: '#00ccff', glow: '#00ccff' }, { main: '#ff00ff', glow: '#ff00ff' }
+];
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    switch(type) {
+        case 'paddle':
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.15); break;
+        case 'brick':
+            const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+            osc.frequency.setValueAtTime(notes[Math.floor(Math.random()*notes.length)], audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.1); break;
+        case 'wall':
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.1); break;
+        case 'die':
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.5);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.type = 'sawtooth';
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.5); break;
+        case 'start':
+            [261.63, 329.63, 392.00, 523.25].forEach((f, i) => {
+                const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.setValueAtTime(f, audioCtx.currentTime + i*0.1);
+                g.gain.setValueAtTime(0.2, audioCtx.currentTime + i*0.1);
+                g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i*0.1 + 0.2);
+                o.start(audioCtx.currentTime + i*0.1); o.stop(audioCtx.currentTime + i*0.1 + 0.2);
+            }); break;
+        case 'levelup':
+            [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.setValueAtTime(f, audioCtx.currentTime + i*0.1);
+                g.gain.setValueAtTime(0.2, audioCtx.currentTime + i*0.1);
+                g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i*0.1 + 0.2);
+                o.start(audioCtx.currentTime + i*0.1); o.stop(audioCtx.currentTime + i*0.1 + 0.2);
+            }); break;
+        case 'combo':
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.15); break;
+        case 'launch':
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.3); break;
+    }
+}
+
+// 粒子对象池：预分配减少GC压力，让GPU渲染更稳定
+const PARTICLE_POOL_SIZE = 200;
+const particlePool = [];
+let particlePoolIndex = 0;
+
+class Particle {
+    constructor() {
+        this.active = false;
+        this.x = 0; this.y = 0;
+        this.vx = 0; this.vy = 0;
+        this.life = 0; this.decay = 0;
+        this.color = ''; this.size = 0; this.gravity = 0.1;
+    }
+    spawn(x, y, color, speed = 5) {
+        this.active = true;
+        this.x = x; this.y = y;
+        const a = Math.random() * Math.PI * 2;
+        const v = Math.random() * speed + 2;
+        this.vx = Math.cos(a) * v; this.vy = Math.sin(a) * v;
+        this.life = 1; this.decay = Math.random() * 0.02 + 0.015;
+        this.color = color; this.size = Math.random() * 5 + 3;
+    }
+    update() {
+        if (!this.active) return;
+        this.x += this.vx; this.y += this.vy;
+        this.vy += this.gravity; this.vx *= 0.99;
+        this.life -= this.decay; this.size *= 0.98;
+        if (this.life <= 0) this.active = false;
+    }
+    draw(ctx) {
+        if (!this.active) return;
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 8; ctx.shadowColor = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+// 初始化对象池
+for (let i = 0; i < PARTICLE_POOL_SIZE; i++) particlePool.push(new Particle());
+
+function initBricks() {
+    bricks = [];
+    const bw = (BASE_W - BRICK_LEFT*2 - BRICK_PAD*(BRICK_COLS-1)) / BRICK_COLS;
+    const bh = 25;
+    for (let r = 0; r < BRICK_ROWS; r++) {
+        for (let c = 0; c < BRICK_COLS; c++) {
+            const h = Math.min(level, 3);
+            bricks.push({
+                x: BRICK_LEFT + c*(bw+BRICK_PAD), y: BRICK_TOP + r*(bh+BRICK_PAD),
+                width: bw, height: bh, color: BRICK_COLORS[r%BRICK_COLORS.length],
+                health: h, maxHealth: h, visible: true, hitFlash: 0
+            });
+        }
+    }
+}
+
+function explode(x, y, color, n = 10) {
+    for (let i = 0; i < n; i++) {
+        let p = particlePool[particlePoolIndex];
+        if (!p.active) {
+            p.spawn(x, y, color);
+            particlePoolIndex = (particlePoolIndex + 1) % PARTICLE_POOL_SIZE;
+        } else {
+            // 查找下一个空闲槽
+            let found = false;
+            for (let j = 0; j < PARTICLE_POOL_SIZE; j++) {
+                const idx = (particlePoolIndex + j) % PARTICLE_POOL_SIZE;
+                if (!particlePool[idx].active) {
+                    particlePool[idx].spawn(x, y, color);
+                    particlePoolIndex = (idx + 1) % PARTICLE_POOL_SIZE;
+                    found = true; break;
+                }
+            }
+            if (!found) return; // 池已满
+        }
+    }
+}
+
+// 拖尾使用固定数组避免GC
+const MAX_TRAILS = 20;
+const trailX = new Float32Array(MAX_TRAILS);
+const trailY = new Float32Array(MAX_TRAILS);
+const trailRadius = new Float32Array(MAX_TRAILS);
+const trailLife = new Float32Array(MAX_TRAILS);
+let trailHead = 0;
+let trailCount = 0;
+
+function trail() {
+    trailX[trailHead] = ball.x;
+    trailY[trailHead] = ball.y;
+    trailRadius[trailHead] = ball.radius * 0.6;
+    trailLife[trailHead] = 1.0;
+    trailHead = (trailHead + 1) % MAX_TRAILS;
+    if (trailCount < MAX_TRAILS) trailCount++;
+}
+
+function initGame() {
+    score = 0; level = 1; lives = 3; combo = 0;
+    particles = []; ballTrails = [];
+    isAiming = false;
+    comboMomentum = 0;
+    resize(); resetBall(); initBricks(); updateUI();
+}
+
+function resetBall() {
+    ball.x = paddle.x + paddle.width/2;
+    ball.y = paddle.y - ball.radius - 5;
+    ball.dx = 0; ball.dy = 0;
+    // 基础速度5，前10关每关+0.4，之后每关+0.15，绝对上限12
+    const levelBonus = level <= 10 ? level * 0.4 : 4 + (level - 10) * 0.15;
+    ball.speed = Math.min(5 + levelBonus, 12);
+    ball.active = false; ballTrails = [];
+    isAiming = false;
+    aimHint.classList.remove('show');
+    // 掉球重置动能
+    comboMomentum = 0;
+}
+
+function launchBall() {
+    if (!isRunning || isPaused || ball.active || !isAiming) return;
+    const dx = aimStartX - aimCurrentX;
+    const dy = aimStartY - aimCurrentY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < MIN_AIM_DIST) { isAiming = false; aimHint.classList.remove('show'); return; }
+    const power = Math.min(dist, MAX_AIM_DIST) / MAX_AIM_DIST;
+    // 精细速度曲线：低力度也有70%基础速度，高力度达到100%，整体更可控
+    const speed = ball.speed * (0.7 + power * 0.3);
+    ball.dx = (dx / dist) * speed;
+    ball.dy = (dy / dist) * speed;
+    ball.active = true;
+    isAiming = false;
+    aimHint.classList.remove('show');
+    playSound('launch');
+}
+
+// ========== 物理引擎 ==========
+function update() {
+    if (isPaused || !isRunning) return;
+    if (!ball.active) { ball.x = paddle.x + paddle.width/2; ball.y = paddle.y - ball.radius - 5; return; }
+    
+    trail();
+    
+    // 子步进物理：每帧4步，防止高速穿墙
+    const steps = 4;
+    const stepDx = ball.dx / steps;
+    const stepDy = ball.dy / steps;
+    
+    for (let s = 0; s < steps; s++) {
+        ball.x += stepDx; ball.y += stepDy;
+        
+        // 墙壁碰撞 - 移除速度膨胀因子，保持速度稳定，添加角度微调避免死循环
+        if (ball.x - ball.radius < 0) { 
+            ball.x = ball.radius; 
+            ball.dx = Math.abs(ball.dx);
+            // 微小角度扰动防止垂直/水平死循环弹跳
+            if (Math.abs(ball.dy) < 0.5) ball.dy += (ball.dy >= 0 ? 0.3 : -0.3);
+            playSound('wall'); explode(0, ball.y, '#00ccff', 5); 
+        }
+        if (ball.x + ball.radius > BASE_W) { 
+            ball.x = BASE_W - ball.radius; 
+            ball.dx = -Math.abs(ball.dx);
+            if (Math.abs(ball.dy) < 0.5) ball.dy += (ball.dy >= 0 ? 0.3 : -0.3);
+            playSound('wall'); explode(BASE_W, ball.y, '#00ccff', 5); 
+        }
+        if (ball.y - ball.radius < 0) { 
+            ball.y = ball.radius; 
+            ball.dy = Math.abs(ball.dy);
+            if (Math.abs(ball.dx) < 0.5) ball.dx += (ball.dx >= 0 ? 0.3 : -0.3);
+            playSound('wall'); explode(ball.x, 0, '#00ccff', 5); 
+        }
+        
+        // 挡板碰撞 - 优化反弹：角度映射更细腻，速度矢量严格归一化
+        if (ball.y + ball.radius >= paddle.y && ball.y - ball.radius <= paddle.y + paddle.height && ball.x >= paddle.x && ball.x <= paddle.x + paddle.width) {
+            ball.y = paddle.y - ball.radius - 0.1;
+            const hitPos = (ball.x - paddle.x) / paddle.width; // 0~1
+            // 映射到角度：-60度到+60度，边缘更陡峭
+            const angle = (hitPos - 0.5) * 1.2; // 约-68度到+68度
+            // 保持当前速度大小不变，仅改变方向
+            const currentSpeed = Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy) || ball.speed;
+            ball.dx = currentSpeed * Math.sin(angle);
+            ball.dy = -Math.abs(currentSpeed * Math.cos(angle));
+            // 最小垂直速度保证，避免水平死循环
+            if (Math.abs(ball.dy) < 1.5) ball.dy = -1.5;
+            playSound('paddle'); explode(ball.x, paddle.y, '#ff00ff', 8);
+        }
+        
+        // 砖块碰撞 - 最小穿透深度法精确反弹
+        let hitBrick = false;
+        for (let i = 0; i < bricks.length; i++) {
+            const b = bricks[i]; if (!b.visible) continue;
+            if (ball.x + ball.radius > b.x && ball.x - ball.radius < b.x + b.width && ball.y + ball.radius > b.y && ball.y - ball.radius < b.y + b.height) {
+                b.health--; b.hitFlash = 1;
+                const overlapLeft = (ball.x + ball.radius) - b.x;
+                const overlapRight = (b.x + b.width) - (ball.x - ball.radius);
+                const overlapTop = (ball.y + ball.radius) - b.y;
+                const overlapBottom = (b.y + b.height) - (ball.y - ball.radius);
+                const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+                // 砖块反弹：保持速度大小，仅反转方向
+                if (minOverlap === overlapLeft) { ball.dx = -Math.abs(ball.dx); ball.x = b.x - ball.radius - 0.1; }
+                else if (minOverlap === overlapRight) { ball.dx = Math.abs(ball.dx); ball.x = b.x + b.width + ball.radius + 0.1; }
+                else if (minOverlap === overlapTop) { ball.dy = -Math.abs(ball.dy); ball.y = b.y - ball.radius - 0.1; }
+                else { ball.dy = Math.abs(ball.dy); ball.y = b.y + b.height + ball.radius + 0.1; }
+                // 微小角度扰动防止死循环
+                if (Math.abs(ball.dx) < 0.3) ball.dx += (ball.dx >= 0 ? 0.2 : -0.2);
+                if (Math.abs(ball.dy) < 0.3) ball.dy += (ball.dy >= 0 ? 0.2 : -0.2);
+                if (b.health <= 0) {
+                    b.visible = false; combo++;
+                    const cb = Math.min(combo, 10); score += 10*cb;
+                    explode(b.x+b.width/2, b.y+b.height/2, b.color.main, 12+cb);
+                    playSound('brick'); if (combo >= 3) playSound('combo');
+                    // 连击动能脉冲：每次击破给小球施加一个瞬时推力
+                    if (comboMomentum < MAX_MOMENTUM) {
+                        comboMomentum++;
+                        const curAngle = Math.atan2(ball.dy, ball.dx);
+                        // 在当前运动方向上叠加动能，带一点随机扰动增加动态感
+                        const perturb = (Math.random() - 0.5) * MOMENTUM_ANGLE_VAR * 2;
+                        const newAngle = curAngle + perturb;
+                        ball.dx += Math.cos(newAngle) * MOMENTUM_BOOST;
+                        ball.dy += Math.sin(newAngle) * MOMENTUM_BOOST;
+                    }
+                    clearTimeout(comboTimer); comboTimer = setTimeout(()=>{combo=0; comboMomentum=0;}, 2500);
+                } else { score += 5; playSound('brick'); explode(b.x+b.width/2, b.y+b.height/2, b.color.main, 5); }
+                updateUI(); hitBrick = true; break;
+            }
+        }
+        if (hitBrick) break;
+    }
+    
+    // 全局速度钳制：确保速度不会异常膨胀或衰减
+    const currentSpeed = Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+    if (currentSpeed > 0) {
+        const maxSpeed = ball.speed * 1.5 + comboMomentum * 1.5;
+        const minSpeed = ball.speed * 0.5;
+        if (currentSpeed > maxSpeed || currentSpeed < minSpeed) {
+            const clamped = Math.max(minSpeed, Math.min(currentSpeed, maxSpeed));
+            const ratio = clamped / currentSpeed;
+            ball.dx *= ratio; ball.dy *= ratio;
+        }
+    }
+    
+    // 动能自然衰减：每帧缓慢衰减，营造动态流动感
+    if (comboMomentum > 0) {
+        const decayRatio = 1 - (MOMENTUM_DECAY * (comboMomentum / MAX_MOMENTUM));
+        ball.dx *= decayRatio; ball.dy *= decayRatio;
+        // 当速度回落到基础范围时，清除动能层级
+        const spd = Math.sqrt(ball.dx*ball.dx + ball.dy*ball.dy);
+        if (spd <= ball.speed * 1.2) comboMomentum = 0;
+    }
+    
+    if (ball.y - ball.radius > BASE_H) {
+        lives--; combo = 0; playSound('die');
+        if (lives <= 0) { gameOver(); } else { resetBall(); }
+        updateUI(); return;
+    }
+    if (bricks.every(b=>!b.visible)) levelComplete();
+    
+    // 对象池粒子更新
+    for (const p of particlePool) p.update();
+    
+    paddle.glow += 0.05; ball.glow += 0.05;
+}
+
+function drawAimLine() {
+    if (!isAiming || ball.active) return;
+    const startX = ball.x, startY = ball.y;
+    const dx = aimStartX - aimCurrentX;
+    const dy = aimStartY - aimCurrentY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 10) return;
+    const power = Math.min(dist, MAX_AIM_DIST) / MAX_AIM_DIST;
+    const speed = ball.speed * (0.7 + power * 0.3);
+    const vx = (dx / dist) * speed;
+    const vy = (dy / dist) * speed;
+    
+    ctx.save();
+    ctx.strokeStyle = `rgba(0, 255, 136, ${0.3 + power * 0.5})`;
+    ctx.lineWidth = 2 + power * 2;
+    ctx.shadowBlur = 10; ctx.shadowColor = '#00ff88';
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(startX, startY);
+    let px = startX, py = startY, pvx = vx, pvy = vy;
+    for (let i = 0; i < 60; i++) {
+        px += pvx; py += pvy;
+        if (px - ball.radius < 0) { px = ball.radius; pvx = Math.abs(pvx); }
+        if (px + ball.radius > BASE_W) { px = BASE_W - ball.radius; pvx = -Math.abs(pvx); }
+        if (py - ball.radius < 0) { py = ball.radius; pvy = Math.abs(pvy); }
+        ctx.lineTo(px, py);
+        if (py > BASE_H || py < 0) break;
+    }
+    ctx.stroke();
+    const angle = Math.atan2(vy, vx);
+    const arrowLen = 15 + power * 10;
+    ctx.setLineDash([]); ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(startX, startY);
+    ctx.lineTo(startX + Math.cos(angle)*arrowLen, startY + Math.sin(angle)*arrowLen);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(startX, startY, 20 + power*15, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(255, 204, 0, ${0.3 + power*0.4})`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+}
+
+function draw() {
+    // 背景：使用clearRect + fillRect组合，GPU友好
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, BASE_W, BASE_H);
+    // 网格线：降低频率减少绘制调用
+    ctx.strokeStyle = 'rgba(255,0,255,0.02)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < BASE_W; i += 40) { ctx.moveTo(i,0); ctx.lineTo(i,BASE_H); }
+    for (let i = 0; i < BASE_H; i += 40) { ctx.moveTo(0,i); ctx.lineTo(BASE_W,i); }
+    ctx.stroke();
+    
+    // TypedArray拖尾绘制：零GC
+    ctx.fillStyle = '#ff00ff';
+    for (let i = 0; i < trailCount; i++) {
+        const idx = (trailHead - 1 - i + MAX_TRAILS) % MAX_TRAILS;
+        const life = trailLife[idx];
+        if (life > 0) {
+            ctx.globalAlpha = life * 0.3;
+            ctx.beginPath();
+            ctx.arc(trailX[idx], trailY[idx], trailRadius[idx] * life, 0, Math.PI * 2);
+            ctx.fill();
+            trailLife[idx] -= 0.05;
+        }
+    }
+    ctx.globalAlpha = 1;
+    
+    // 批量绘制砖块：分组减少shadow状态切换
+    let lastGlow = null;
+    for (const b of bricks) {
+        if (!b.visible) continue;
+        if (b.hitFlash > 0) { ctx.fillStyle = '#fff'; b.hitFlash -= 0.1; }
+        else { ctx.globalAlpha = 0.5 + (b.health / b.maxHealth) * 0.5; ctx.fillStyle = b.color.main; }
+        if (lastGlow !== b.color.glow) {
+            ctx.shadowBlur = 10; ctx.shadowColor = b.color.glow;
+            lastGlow = b.color.glow;
+        }
+        roundRect(ctx, b.x, b.y, b.width, b.height, 4); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.globalAlpha = 0.3;
+        roundRect(ctx, b.x+2, b.y+2, b.width-4, b.height/2-2, 2); ctx.fill(); ctx.globalAlpha = 1;
+        if (b.maxHealth > 1 && b.health > 1) {
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(b.health, b.x + b.width / 2, b.y + b.height / 2 + 4);
+        }
+    }
+    ctx.shadowBlur = 0;
+    
+    ctx.shadowBlur = 15 + Math.sin(paddle.glow)*5; ctx.shadowColor = '#ff00ff';
+    ctx.fillStyle = '#ff00ff'; roundRect(ctx, paddle.x, paddle.y, paddle.width, paddle.height, 8); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.2)'; roundRect(ctx, paddle.x+3, paddle.y+2, paddle.width-6, paddle.height/2-2, 4); ctx.fill();
+    ctx.shadowBlur = 0;
+    
+    if (lives > 0 || !isRunning) {
+        ctx.shadowBlur = 15 + Math.sin(ball.glow)*5; ctx.shadowColor = '#ff00ff';
+        ctx.fillStyle = '#ff00ff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(ball.x-2, ball.y-2, ball.radius*0.4, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    
+    drawAimLine();
+    
+    // 对象池粒子绘制：批量渲染减少状态切换
+    ctx.save();
+    for (const p of particlePool) p.draw(ctx);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    
+    if (combo >= 2) {
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
+        ctx.shadowBlur = 10; ctx.shadowColor = '#ffcc00'; 
+        const momentumBar = '▮'.repeat(comboMomentum) + '▯'.repeat(MAX_MOMENTUM - comboMomentum);
+        ctx.fillText(`${combo}x 连击! ${momentumBar}`, BASE_W/2, BASE_H/2); 
+        ctx.shadowBlur = 0;
+    }
+    if (isPaused && isRunning) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, BASE_W, BASE_H);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 40px "Segoe UI", sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('PAUSED', BASE_W/2, BASE_H/2); ctx.font = '20px "Segoe UI", sans-serif'; ctx.fillStyle = '#888';
+        ctx.fillText('按空格键继续', BASE_W/2, BASE_H/2+40);
+    }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y); ctx.closePath();
+}
+
+// ========== GPU优化游戏循环：固定时间步 + 最大帧率 ==========
+let lastTime = 0;
+const FIXED_DT = 1000 / 60;
+let accumulator = 0;
+let rafId = null;
+
+function gameStep(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    let delta = timestamp - lastTime;
+    lastTime = timestamp;
+    
+    // 防止后台切换导致的巨大delta
+    if (delta > 100) delta = FIXED_DT;
+    
+    accumulator += delta;
+    // 固定60FPS物理更新
+    while (accumulator >= FIXED_DT) {
+        update();
+        accumulator -= FIXED_DT;
+    }
+    // 每帧都渲染，让GPU满负荷工作
+    draw();
+    
+    if (isRunning) rafId = requestAnimationFrame(gameStep);
+}
+
+// 页面可见性控制：后台时暂停节省电量
+let wasPausedByVisibility = false;
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isRunning && !isPaused) {
+        wasPausedByVisibility = true;
+        isPaused = true;
+    } else if (wasPausedByVisibility && isRunning) {
+        wasPausedByVisibility = false;
+        isPaused = false;
+        lastTime = 0;
+        accumulator = 0;
+    }
+});
+
+function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('highScore').textContent = highScore;
+    document.getElementById('level').textContent = level;
+    const lc = document.getElementById('lives'); lc.innerHTML = '';
+    for (let i = 0; i < lives; i++) { const d = document.createElement('div'); d.className = 'life-ball'; lc.appendChild(d); }
+}
+
+function startGame() {
+    if (isRunning) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (rafId) cancelAnimationFrame(rafId);
+    initGame(); isRunning = true; isPaused = false; playSound('start');
+    document.getElementById('startOverlay').classList.add('hidden');
+    document.getElementById('gameOverOverlay').classList.add('hidden');
+    document.getElementById('levelOverlay').classList.add('hidden');
+    document.getElementById('startBtn').textContent = '游戏中';
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('startBtn').style.opacity = '0.5';
+    lastTime = 0; accumulator = 0; rafId = requestAnimationFrame(gameStep);
+}
+
+function togglePause() {
+    if (!isRunning) return;
+    isPaused = !isPaused;
+    document.getElementById('pauseBtn').textContent = isPaused ? '继续' : '暂停';
+    if (!isPaused && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function levelComplete() {
+    isPaused = true; playSound('levelup'); level++;
+    document.getElementById('levelUpNum').textContent = level;
+    document.getElementById('levelOverlay').classList.remove('hidden');
+    if (level%3 === 0 && lives < 5) lives++;
+    updateUI();
+}
+
+function nextLevel() {
+    document.getElementById('levelOverlay').classList.add('hidden');
+    initBricks(); resetBall(); isPaused = false;
+}
+
+function gameOver() {
+    isRunning = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (score > highScore) { highScore = score; localStorage.setItem('breakoutHighScore', highScore); }
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalLevel').textContent = level;
+    document.getElementById('gameOverOverlay').classList.remove('hidden');
+    document.getElementById('startBtn').textContent = '开始';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('startBtn').style.opacity = '1';
+}
+
+function restartGame() {
+    document.getElementById('gameOverOverlay').classList.add('hidden'); startGame();
+}
+
+function retryGame() {
+    if (!isRunning) return;
+    isPaused = false;
+    document.getElementById('pauseBtn').textContent = '暂停';
+    score = 0; combo = 0; comboMomentum = 0; particles = []; ballTrails = [];
+    isAiming = false;
+    resetBall(); initBricks(); updateUI();
+    playSound('start');
+}
+
+// 鼠标
+canvas.addEventListener('mousedown', (e) => {
+    if (!isRunning || isPaused || ball.active) return;
+    const r = canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * scaleX;
+    const my = (e.clientY - r.top) * scaleY;
+    const onPaddle = mx >= paddle.x && mx <= paddle.x + paddle.width && my >= paddle.y - 50 && my <= paddle.y + paddle.height + 20;
+    if (!onPaddle) return;
+    isAiming = true; aimStartX = mx; aimStartY = my; aimCurrentX = mx; aimCurrentY = my;
+    aimHint.classList.add('show');
+});
+canvas.addEventListener('mousemove', (e) => {
+    if (!isRunning || isPaused) return;
+    const r = canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * scaleX;
+    if (isAiming && !ball.active) { aimCurrentX = mx; aimCurrentY = (e.clientY - r.top) * scaleY; }
+    else { paddle.x = mx - paddle.width/2; if (paddle.x < 0) paddle.x = 0; if (paddle.x + paddle.width > BASE_W) paddle.x = BASE_W - paddle.width; }
+});
+canvas.addEventListener('mouseup', () => { if (isAiming && !ball.active) launchBall(); });
+canvas.addEventListener('mouseleave', () => { if (isAiming) { isAiming = false; aimHint.classList.remove('show'); } });
+
+// 触摸
+canvas.addEventListener('touchstart', (e) => {
+    if (!isRunning || isPaused) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const tx = (e.touches[0].clientX - r.left) * scaleX;
+    const ty = (e.touches[0].clientY - r.top) * scaleY;
+    const onPaddle = tx >= paddle.x && tx <= paddle.x + paddle.width && ty >= paddle.y - 50 && ty <= paddle.y + paddle.height + 20;
+    if (!ball.active && onPaddle) { isAiming = true; aimStartX = tx; aimStartY = ty; aimCurrentX = tx; aimCurrentY = ty; aimHint.classList.add('show'); }
+    touchStartX = tx; paddleStartX = paddle.x;
+}, { passive: false });
+canvas.addEventListener('touchmove', (e) => {
+    if (!isRunning || isPaused) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const tx = (e.touches[0].clientX - r.left) * scaleX;
+    const ty = (e.touches[0].clientY - r.top) * scaleY;
+    if (isAiming && !ball.active) { aimCurrentX = tx; aimCurrentY = ty; }
+    else { const delta = tx - touchStartX; paddle.x = paddleStartX + delta; if (paddle.x < 0) paddle.x = 0; if (paddle.x + paddle.width > BASE_W) paddle.x = BASE_W - paddle.width; }
+}, { passive: false });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); if (isAiming && !ball.active) launchBall(); }, { passive: false });
+
+// 键盘
+document.addEventListener('keydown', (e) => {
+    if (!isRunning) return;
+    switch(e.key) {
+        case 'ArrowLeft': case 'a': case 'A': paddle.x -= paddle.speed*2; if (paddle.x < 0) paddle.x = 0; e.preventDefault(); break;
+        case 'ArrowRight': case 'd': case 'D': paddle.x += paddle.speed*2; if (paddle.x + paddle.width > BASE_W) paddle.x = BASE_W - paddle.width; e.preventDefault(); break;
+        case ' ': togglePause(); e.preventDefault(); break;
+    }
+});
+
+document.getElementById('highScore').textContent = highScore;
+initGame(); draw();
+</script>
+</body>
+</html>
